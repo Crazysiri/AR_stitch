@@ -261,4 +261,27 @@ cv::Point2f calcWarpedPoint(
         const std::vector<cv::Point> &corners2,
         const std::vector<cv::Size> &sizes2);
 
+
+
+
+struct MyProjector
+{
+    void setCameraParams(InputArray K = Mat::eye(3, 3, CV_32F),
+                         InputArray R = Mat::eye(3, 3, CV_32F),
+                         InputArray T = Mat::zeros(3, 1, CV_32F));
+    void mapForward(float x, float y, float &u, float &v);
+    void mapBackward(float u, float v, float &x, float &y);
+
+    float scale;
+    float k[9];
+    float rinv[9];
+    float r_kinv[9];
+    float k_rinv[9];
+    float t[3];
+};
+
+
+
+
+
 #endif

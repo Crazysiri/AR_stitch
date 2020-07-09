@@ -81,28 +81,127 @@ int calculatecorners(Corner& c, Mat& img, Mat& H) {
     return 0;
 }
 
+//cv::Point2f calcWarpedPoint(
+//        const cv::Point2f& pt,
+//        InputArray K1,                // Camera K parameter
+//        InputArray R1,                // Camera R parameter
+//        InputArray K2,                // Camera K parameter
+//        InputArray R2,                // Camera R parameter
+//        Ptr<cv::detail::RotationWarper> warper,  // The Rotation Warper
+//        const std::vector<cv::Point> &corners,
+//        const std::vector<cv::Size> &sizes)
+//{
+//    cv::Point2f  dst = warper->warpPoint(pt, K1, R1);
+//    cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
+//    dst = cv::Point2f(dst.x - tl.x, dst.y - tl.y);
+//    Mat R2_t;
+//    cv::invert(R2 ,R2_t);
+//    cv::Point2f  dst2 = warper->warpPoint(dst, K2, R2_t);
+//    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
+//    cv::Point2f final_pt = cv::Point2f(dst2.x - t2.x, dst2.y - t2.y);
+//
+////    cv::Point2f final_pt = dst2;
+//    return final_pt;
+//}
+inline
+void MyProjector::mapForward(float x, float y, float &u, float &v)
+{
+    float x_ = r_kinv[0] * x + r_kinv[1] * y + r_kinv[2];
+    float y_ = r_kinv[3] * x + r_kinv[4] * y + r_kinv[5];
+    float z_ = r_kinv[6] * x + r_kinv[7] * y + r_kinv[8];
+
+    x_ = t[0] + x_ / z_ * (1 - t[2]);
+    y_ = t[1] + y_ / z_ * (1 - t[2]);
+
+    u = scale * x_;
+    v = scale * y_;
+}
+
+inline
+void MyProjector::mapBackward(float u, float v, float &x, float &y)
+{
+    u = u / scale - t[0];
+    v = v / scale - t[1];
+
+    float z;
+    x = k_rinv[0] * u + k_rinv[1] * v + k_rinv[2] * (1 - t[2]);
+    y = k_rinv[3] * u + k_rinv[4] * v + k_rinv[5] * (1 - t[2]);
+    z = k_rinv[6] * u + k_rinv[7] * v + k_rinv[8] * (1 - t[2]);
+
+    x /= z;
+    y /= z;
+}
+
+void MyProjector::setCameraParams(InputArray _K, InputArray _R, InputArray _T)
+{
+    Mat K = _K.getMat(), R = _R.getMat(), T = _T.getMat();
+
+    CV_Assert(K.size() == Size(3, 3) && K.type() == CV_32F);
+    CV_Assert(R.size() == Size(3, 3) && R.type() == CV_32F);
+    CV_Assert((T.size() == Size(1, 3) || T.size() == Size(3, 1)) && T.type() == CV_32F);
+
+    Mat_<float> K_(K);
+    k[0] = K_(0,0); k[1] = K_(0,1); k[2] = K_(0,2);
+    k[3] = K_(1,0); k[4] = K_(1,1); k[5] = K_(1,2);
+    k[6] = K_(2,0); k[7] = K_(2,1); k[8] = K_(2,2);
+
+    Mat_<float> Rinv = R.t();
+    rinv[0] = Rinv(0,0); rinv[1] = Rinv(0,1); rinv[2] = Rinv(0,2);
+    rinv[3] = Rinv(1,0); rinv[4] = Rinv(1,1); rinv[5] = Rinv(1,2);
+    rinv[6] = Rinv(2,0); rinv[7] = Rinv(2,1); rinv[8] = Rinv(2,2);
+
+    Mat_<float> R_Kinv = R * K.inv();
+    r_kinv[0] = R_Kinv(0,0); r_kinv[1] = R_Kinv(0,1); r_kinv[2] = R_Kinv(0,2);
+    r_kinv[3] = R_Kinv(1,0); r_kinv[4] = R_Kinv(1,1); r_kinv[5] = R_Kinv(1,2);
+    r_kinv[6] = R_Kinv(2,0); r_kinv[7] = R_Kinv(2,1); r_kinv[8] = R_Kinv(2,2);
+
+    Mat_<float> K_Rinv = K * Rinv;
+    k_rinv[0] = K_Rinv(0,0); k_rinv[1] = K_Rinv(0,1); k_rinv[2] = K_Rinv(0,2);
+    k_rinv[3] = K_Rinv(1,0); k_rinv[4] = K_Rinv(1,1); k_rinv[5] = K_Rinv(1,2);
+    k_rinv[6] = K_Rinv(2,0); k_rinv[7] = K_Rinv(2,1); k_rinv[8] = K_Rinv(2,2);
+
+    Mat_<float> T_(T.reshape(0, 3));
+    t[0] = T_(0,0); t[1] = T_(1,0); t[2] = T_(2,0);
+}
+
+Point2f warpPoint(const Point2f &pt, InputArray K, InputArray R, float scale)
+{
+    MyProjector projector_;
+    projector_.scale = scale;
+    float tz[] = {0.f, 0.f, 0.f};
+    Mat_<float> T(3, 1, tz);
+    projector_.setCameraParams(K, R, T);
+
+    Point2f uv;
+    projector_.mapForward(pt.x, pt.y, uv.x, uv.y);
+    return uv;
+}
+
+Point2f dewarpPoint(const Point2f &pt, InputArray K, InputArray R, float scale)
+{
+    MyProjector projector_;
+    projector_.scale = scale;
+    float tz[] = {0.f, 0.f, 0.f};
+    Mat_<float> T(3, 1, tz);
+    projector_.setCameraParams(K, R, T);
+
+    Point2f uv;
+    projector_.mapBackward(pt.x, pt.y, uv.x, uv.y);
+    return uv;
+}
+
 cv::Point2f calcWarpedPoint(
         const cv::Point2f& pt,
-        InputArray K1,                // Camera K parameter
-        InputArray R1,                // Camera R parameter
-        InputArray K2,                // Camera K parameter
-        InputArray R2,                // Camera R parameter
-        Ptr<cv::detail::RotationWarper> warper,  // The Rotation Warper
-        const std::vector<cv::Point> &corners,
-        const std::vector<cv::Size> &sizes)
+        InputArray K0, InputArray R0,
+        InputArray K1, InputArray R1,
+        Ptr<cv::detail::RotationWarper> warper)
 {
-    cv::Point2f  dst = warper->warpPoint(pt, K1, R1);
-    cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
-    dst = cv::Point2f(dst.x - tl.x, dst.y - tl.y);
-    Mat R2_t;
-    cv::invert(R2 ,R2_t);
-    cv::Point2f  dst2 = warper->warpPoint(dst, K2, R2_t);
-    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
-    cv::Point2f final_pt = cv::Point2f(dst2.x - t2.x, dst2.y - t2.y);
-
-//    cv::Point2f final_pt = dst2;
+    cv::Point2f  dst = warper->warpPoint(pt, K0, R0);
+    float scale = warper->getScale();
+    cv::Point2f final_pt = dewarpPoint(dst, K1, R1, scale);
     return final_pt;
 }
+
 
 
 int gethomoandmask_v3(homoandmask &result, vector<KeyPoint> &keyPts1, vector<KeyPoint> &keyPts2, vector<DMatch> &GoodMatchePoints, int direction, int h_, int w_, double cutsize, int match_num)
@@ -508,36 +607,39 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
 
 
-        cv::Point2f  dst_p0 = warper->warpPoint(p0, K0, R0);
-        cv::Point2f  dst_p1 = warper->warpPoint(p1, K0, R0);
-        cv::Point2f  dst_p2 = warper->warpPoint(p2, K0, R0);
-        cv::Point2f  dst_p3 = warper->warpPoint(p3, K0, R0);
-
-        cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
-        dst_p0 = cv::Point2f(dst_p0.x - tl.x, dst_p0.y - tl.y);
-        dst_p1 = cv::Point2f(dst_p1.x - tl.x, dst_p1.y - tl.y);
-        dst_p2 = cv::Point2f(dst_p2.x - tl.x, dst_p2.y - tl.y);
-        dst_p3 = cv::Point2f(dst_p3.x - tl.x, dst_p3.y - tl.y);
-        Mat R1_t;
-        cv::invert(R1 ,R1_t);
-    //    cv::invert(R1_t ,R1_t);
-        cv::Point2f  dst2_p0 = warper->warpPoint(dst_p0, K1, R1_t);
-        cv::Point2f  dst2_p1 = warper->warpPoint(dst_p1, K1, R1_t);
-        cv::Point2f  dst2_p2 = warper->warpPoint(dst_p2, K1, R1_t);
-        cv::Point2f  dst2_p3 = warper->warpPoint(dst_p3, K1, R1_t);
-    //    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
-        cv::Point2f final_pt = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
-
-    //    cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper, corners, sizes);
-    //    cv::Point p1_ = calcWarpedPoint(p1, K0, R0, K1, R1, warper, corners, sizes);
-    //    cv::Point p2_ = calcWarpedPoint(p2, K0, R0, K1, R1, warper, corners, sizes);
-    //    cv::Point p3_ = calcWarpedPoint(p3, K0, R0, K1, R1, warper, corners, sizes);
-
-        cv::Point p0_ = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
-        cv::Point p1_ = cv::Point2f(dst2_p1.x - tl.x, dst2_p1.y - tl.y);
-        cv::Point p2_ = cv::Point2f(dst2_p2.x - tl.x, dst2_p2.y - tl.y);
-        cv::Point p3_ = cv::Point2f(dst2_p3.x - tl.x, dst2_p3.y - tl.y);
-
+//        cv::Point2f  dst_p0 = warper->warpPoint(p0, K0, R0);
+//        cv::Point2f  dst_p1 = warper->warpPoint(p1, K0, R0);
+//        cv::Point2f  dst_p2 = warper->warpPoint(p2, K0, R0);
+//        cv::Point2f  dst_p3 = warper->warpPoint(p3, K0, R0);
+//
+//        cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
+//        dst_p0 = cv::Point2f(dst_p0.x - tl.x, dst_p0.y - tl.y);
+//        dst_p1 = cv::Point2f(dst_p1.x - tl.x, dst_p1.y - tl.y);
+//        dst_p2 = cv::Point2f(dst_p2.x - tl.x, dst_p2.y - tl.y);
+//        dst_p3 = cv::Point2f(dst_p3.x - tl.x, dst_p3.y - tl.y);
+//        Mat R1_t;
+//        cv::invert(R1 ,R1_t);
+//    //    cv::invert(R1_t ,R1_t);
+//        cv::Point2f  dst2_p0 = warper->warpPoint(dst_p0, K1, R1_t);
+//        cv::Point2f  dst2_p1 = warper->warpPoint(dst_p1, K1, R1_t);
+//        cv::Point2f  dst2_p2 = warper->warpPoint(dst_p2, K1, R1_t);
+//        cv::Point2f  dst2_p3 = warper->warpPoint(dst_p3, K1, R1_t);
+//    //    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
+//        cv::Point2f final_pt = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
+//
+//    //    cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper, corners, sizes);
+//    //    cv::Point p1_ = calcWarpedPoint(p1, K0, R0, K1, R1, warper, corners, sizes);
+//    //    cv::Point p2_ = calcWarpedPoint(p2, K0, R0, K1, R1, warper, corners, sizes);
+//    //    cv::Point p3_ = calcWarpedPoint(p3, K0, R0, K1, R1, warper, corners, sizes);
+//
+//        cv::Point p0_ = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
+//        cv::Point p1_ = cv::Point2f(dst2_p1.x - tl.x, dst2_p1.y - tl.y);
+//        cv::Point p2_ = cv::Point2f(dst2_p2.x - tl.x, dst2_p2.y - tl.y);
+//        cv::Point p3_ = cv::Point2f(dst2_p3.x - tl.x, dst2_p3.y - tl.y);
+        cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper);
+        cv::Point p1_ = calcWarpedPoint(p1, K0, R0, K1, R1, warper);
+        cv::Point p2_ = calcWarpedPoint(p2, K0, R0, K1, R1, warper);
+        cv::Point p3_ = calcWarpedPoint(p3, K0, R0, K1, R1, warper);
 
 
 
@@ -565,12 +667,12 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 //
 //        polylines(full_v2_image,  ppt, npt, 1, 1, Scalar(0,255,0),4,8,0);
 //
-//
-//
+//        std::cout << full_v2_image.cols << "\n";
+//        std::cout << full_v2_image.rows << "\n";
 //        std::cout << "***************************************" << std::endl;
 //
 //        std::cout << "\nCheck `result.png`, `result_mask.png` and `result2.png`!\n";
-//        imwrite("/home/baihao/jpg/resultxubo.jpg", full_v2_image);
+//        imwrite("/home/baihao/jpg/resultxuboabab.jpg", full_v2_image);
 
         result.corner = vector<Point2f>({p0_, p1_,
                                          p2_, p3_});
