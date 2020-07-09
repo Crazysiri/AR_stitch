@@ -16,8 +16,10 @@ float seam_work_aspect = 1.0f;
 Ptr<cv::xfeatures2d::SiftFeatureDetector> finder = cv::xfeatures2d::SiftFeatureDetector::create(1000);
 #define WIDTH_MAX 800
 #else
+
+//! feature keypoint descrpetor finder
 Ptr<Feature2D> finder = xfeatures2d::SURF::create(4000);
-#define WIDTH_MAX 700
+#define WIDTH_MAX 800
 #endif
 // Ptr<Feature2D>  finder = ORB::create();
 class MyPoint
@@ -80,29 +82,7 @@ int calculatecorners(Corner& c, Mat& img, Mat& H) {
     c.calculatefromhomo(H);
     return 0;
 }
-
-//cv::Point2f calcWarpedPoint(
-//        const cv::Point2f& pt,
-//        InputArray K1,                // Camera K parameter
-//        InputArray R1,                // Camera R parameter
-//        InputArray K2,                // Camera K parameter
-//        InputArray R2,                // Camera R parameter
-//        Ptr<cv::detail::RotationWarper> warper,  // The Rotation Warper
-//        const std::vector<cv::Point> &corners,
-//        const std::vector<cv::Size> &sizes)
-//{
-//    cv::Point2f  dst = warper->warpPoint(pt, K1, R1);
-//    cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
-//    dst = cv::Point2f(dst.x - tl.x, dst.y - tl.y);
-//    Mat R2_t;
-//    cv::invert(R2 ,R2_t);
-//    cv::Point2f  dst2 = warper->warpPoint(dst, K2, R2_t);
-//    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
-//    cv::Point2f final_pt = cv::Point2f(dst2.x - t2.x, dst2.y - t2.y);
-//
-////    cv::Point2f final_pt = dst2;
-//    return final_pt;
-//}
+//! calculate currect point
 inline
 void MyProjector::mapForward(float x, float y, float &u, float &v)
 {
@@ -279,11 +259,14 @@ int gethomoandmask_v3(homoandmask &result, vector<KeyPoint> &keyPts1, vector<Key
     return 0;
 }
 
+//! the new alogrithm is using camera matrix K and rotation matrix R to calculate the mapping area
 int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int direction, double cutsize, double compression_ratio, int match_num1, int match_num2, double threshold1, double threshold2)
 {
     try{
+        //! init the status, 0 is can not stitching
         result.direction_status = 0;
     //    work_scale = float(image.rows)/float(800);
+        //! 手机屏幕分辨率是1920*1080
         Size target_size;
         target_size.height = 1920;
         target_size.width = 1080;
@@ -297,6 +280,7 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         full_img_sizes[0] = full_img_size;
         full_img_sizes[1] = full_img_size;
 
+        //! cut image based one the cut percent
         int cols = 1080;
         int rows = 1920;
         switch (direction) {
@@ -320,40 +304,41 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
         Mat full_v2_image = image.clone();
 
-
+        //! resize percent
         work_scale = min(1.0, sqrt(work_megapix * 1e6 / image.size().area()));
         work_scale = float(WIDTH_MAX)/float(image.rows);
         resize(image, image, Size(), work_scale, work_scale, 5);
 
+        //! an empty keypoint and decriptor calculator
         cv::detail::ImageFeatures image2Feature;
-//        seam_scale = min(1.0, sqrt(seam_megapix * 1e6 / image.size().area()));
         seam_scale = 1.0;
         seam_work_aspect = seam_scale / work_scale;
         cv::detail::computeImageFeatures(finder, image, image2Feature);
-//        resize(image, image, Size(), seam_scale, seam_scale, 5);
+
+        //! cause we calculate the keypoints based on the cut image
+        //! so we need to map the keypoint to whole image
         for(int i = 0; i < image2Feature.keypoints.size();i++){
 
-
+            //! 0 cut right
+            //! 1 cut left, so we need change the cooridinate add the cut size to the x
+            //! 2 cut below
+            //! 3 cut up, so need to add the cut size to the y
             switch (direction) {
                 case 0:
-//                    cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
-//                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x,result.imageFeatures.keypoints[i].pt.y);
                     break;
                 case 1:
-//                    cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
                     image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x + ((int)(cols * (1 - cutsize)))*work_scale,image2Feature.keypoints[i].pt.y);
                     break;
                 case 2:
-//                    cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
                     break;
                 case 3:
-//                    cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
                     image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x,(image2Feature.keypoints[i].pt.y)+((int)(rows * (1 - cutsize)))*work_scale);
                     break;
                 default:
                     break;
             }
         }
+        //! create a feature vector to store the keypoints and features
         vector<cv::detail::ImageFeatures> features;
         features.push_back(basedata.imageFeatures);
         features.push_back(image2Feature);
@@ -375,7 +360,7 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         vector<Size> full_img_sizes_subset;
         for (size_t i = 0; i < indices.size(); ++i)
         {
-    //        img_names_subset.push_back(img_names[indices[i]]);
+
             img_subset.push_back(images[indices[i]]);
             full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
         }
@@ -454,12 +439,12 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
         std::cout << "\nWarping images (auxiliary)... \n";
 
-        vector<Point> corners(num_images);
-    //    vector<UMat> masks_warped(num_images);
+
+
         vector<UMat> images_warped(num_images);
         vector<Size> sizes(num_images);
 
-        // Warp images and their masks
+        //! Warp images and their masks
 //        Ptr<WarperCreator> warper_creator = makePtr<cv::CylindricalWarper>();
         Ptr<WarperCreator> warper_creator = makePtr<cv::PlaneWarper>();
         if (!warper_creator)
@@ -471,19 +456,6 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         //! Create RotationWarper
         Ptr<cv::detail::RotationWarper> warper = warper_creator->create(static_cast<float>(warped_image_scale * seam_work_aspect));
 
-        //! Calculate warped corners/sizes/mask
-        for (int i = 0; i < num_images; ++i)
-        {
-            Mat_<float> K;
-            cameras[i].K().convertTo(K, CV_32F);
-            float swa = (float)seam_work_aspect;
-            K(0, 0) *= swa; K(0, 2) *= swa;
-            K(1, 1) *= swa; K(1, 2) *= swa;
-            corners[i] = warper->warp(images[i], K, cameras[i].R, INTER_LINEAR, BORDER_REFLECT, images_warped[i]);
-            sizes[i] = images_warped[i].size();
-    //        warper->warp(masks[i], K, cameras[i].R, INTER_NEAREST, BORDER_CONSTANT, masks_warped[i]);
-        }
-
 
         images.clear();
         images_warped.clear();
@@ -491,7 +463,6 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
         Mat img_warped, img_warped_s;
         Mat dilated_mask, seam_mask, mask, mask_warped;
-    //    Ptr<Blender> blender;
         double compose_work_aspect = 1;
         is_compose_scale_set = false;
         for (int img_idx = 0; img_idx < num_images; ++img_idx)
@@ -513,69 +484,16 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
                     cameras[i].focal *= compose_work_aspect;
                     cameras[i].ppx *= compose_work_aspect;
                     cameras[i].ppy *= compose_work_aspect;
-
-                    Size sz = full_img_sizes[i];
-                    if (std::abs(compose_scale - 1) > 1e-1)
-                    {
-                        sz.width = cvRound(full_img_sizes[i].width * compose_scale);
-                        sz.height = cvRound(full_img_sizes[i].height * compose_scale);
-                    }
-
-                    Mat K;
-                    cameras[i].K().convertTo(K, CV_32F);
-                    Rect roi = warper->warpRoi(sz, K, cameras[i].R);
-
-                    corners[i] = roi.tl();
-                    sizes[i] = roi.size();
                 }
             }
 
-    //        if (abs(compose_scale - 1) > 1e-1)
-    //            resize(full_img, img, Size(), compose_scale, compose_scale, 5);
-    //        else
-    //            img = full_img;
-            full_img.release();
-    //        Size img_size = img.size();
 
-    //        Mat K, R;
-    //        cameras[img_idx].K().convertTo(K, CV_32F);
-    //        R = cameras[img_idx].R;
-    //
-    //        // Warp the current image : img => img_warped
-    //        warper->warp(img, K, cameras[img_idx].R, INTER_LINEAR, BORDER_REFLECT, img_warped);
-    //
-    //        // Warp the current image mask
-    //        mask.create(img_size, CV_8U);
-    //        mask.setTo(Scalar::all(255));
-    //        warper->warp(mask, K, cameras[img_idx].R, INTER_NEAREST, BORDER_CONSTANT, mask_warped);
-    //
-    //        compensator->apply(img_idx, corners[img_idx], img_warped, mask_warped);
+            full_img.release();
             img_warped.convertTo(img_warped_s, CV_16S);
             img_warped.release();
 
             mask.release();
 
-    //        dilate(masks_warped[img_idx], dilated_mask, Mat());
-    //        resize(dilated_mask, seam_mask, mask_warped.size(), 0, 0, 5);
-    //        mask_warped = seam_mask & mask_warped;
-
-    //        if (!blender)
-    //        {
-    //            blender = Blender::createDefault(Blender::MULTI_BAND, false);
-    //            Size dst_sz = resultRoi(corners, sizes).size();
-    //            float blend_width = sqrt(static_cast<float>(dst_sz.area())) * blend_strength / 100.f;
-    //            if (blend_width < 1.f){
-    //                blender = Blender::createDefault(Blender::NO, false);
-    //            }
-    //            else
-    //            {
-    //                MultiBandBlender* mb = dynamic_cast<MultiBandBlender*>(blender.get());
-    //                mb->setNumBands(static_cast<int>(ceil(log(blend_width) / log(2.)) - 1.));
-    //            }
-    //            blender->prepare(corners, sizes);
-    //        }
-    //
-    //        blender->feed(img_warped_s, mask_warped, corners[img_idx]);
         }
 
 
@@ -592,8 +510,7 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         cameras[1].R.convertTo(R1, CV_32F);
 
 
-    //    cv::Point2f my_cpt = cv::Point2f(img_sizes[0].first, img_sizes[0].second);
-    //    cv::Point my_pt = calcWarpedPoint(my_cpt, K0, R0, K1, R1, warper, corners, sizes);
+
         vector<pair<int, int> > img_sizes;
         for (int idx = 0; idx < 2; ++idx) {
 
@@ -607,35 +524,6 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
 
 
-//        cv::Point2f  dst_p0 = warper->warpPoint(p0, K0, R0);
-//        cv::Point2f  dst_p1 = warper->warpPoint(p1, K0, R0);
-//        cv::Point2f  dst_p2 = warper->warpPoint(p2, K0, R0);
-//        cv::Point2f  dst_p3 = warper->warpPoint(p3, K0, R0);
-//
-//        cv::Point2f  tl = cv::detail::resultRoi(corners, sizes).tl();
-//        dst_p0 = cv::Point2f(dst_p0.x - tl.x, dst_p0.y - tl.y);
-//        dst_p1 = cv::Point2f(dst_p1.x - tl.x, dst_p1.y - tl.y);
-//        dst_p2 = cv::Point2f(dst_p2.x - tl.x, dst_p2.y - tl.y);
-//        dst_p3 = cv::Point2f(dst_p3.x - tl.x, dst_p3.y - tl.y);
-//        Mat R1_t;
-//        cv::invert(R1 ,R1_t);
-//    //    cv::invert(R1_t ,R1_t);
-//        cv::Point2f  dst2_p0 = warper->warpPoint(dst_p0, K1, R1_t);
-//        cv::Point2f  dst2_p1 = warper->warpPoint(dst_p1, K1, R1_t);
-//        cv::Point2f  dst2_p2 = warper->warpPoint(dst_p2, K1, R1_t);
-//        cv::Point2f  dst2_p3 = warper->warpPoint(dst_p3, K1, R1_t);
-//    //    cv::Point2f  t2 = cv::detail::resultRoi(corners, sizes).tl();
-//        cv::Point2f final_pt = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
-//
-//    //    cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper, corners, sizes);
-//    //    cv::Point p1_ = calcWarpedPoint(p1, K0, R0, K1, R1, warper, corners, sizes);
-//    //    cv::Point p2_ = calcWarpedPoint(p2, K0, R0, K1, R1, warper, corners, sizes);
-//    //    cv::Point p3_ = calcWarpedPoint(p3, K0, R0, K1, R1, warper, corners, sizes);
-//
-//        cv::Point p0_ = cv::Point2f(dst2_p0.x - tl.x, dst2_p0.y - tl.y);
-//        cv::Point p1_ = cv::Point2f(dst2_p1.x - tl.x, dst2_p1.y - tl.y);
-//        cv::Point p2_ = cv::Point2f(dst2_p2.x - tl.x, dst2_p2.y - tl.y);
-//        cv::Point p3_ = cv::Point2f(dst2_p3.x - tl.x, dst2_p3.y - tl.y);
         cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper);
         cv::Point p1_ = calcWarpedPoint(p1, K0, R0, K1, R1, warper);
         cv::Point p2_ = calcWarpedPoint(p2, K0, R0, K1, R1, warper);
@@ -643,36 +531,36 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
 
 
-//        std::cout << "***************************************" << std::endl;
-//        Point root_points[1][4];
-//        root_points[0][0] = p0_;
-//        root_points[0][1] = p1_;
-//        root_points[0][2] = p2_;
-//        root_points[0][3] = p3_;
-//
-//        std::cout << p0_ << "\n";
-//        std::cout << p1_ << "\n";
-//        std::cout << p2_ << "\n";
-//        std::cout << p3_ << "\n";
-//
-//
-//        std::cout << p0 << "\n";
-//        std::cout << p1 << "\n";
-//        std::cout << p2 << "\n";
-//        std::cout << p3 << "\n";
-//
-//        const Point* ppt[1] = {root_points[0]};
-//        int npt[] = {4};
-//
-//
-//        polylines(full_v2_image,  ppt, npt, 1, 1, Scalar(0,255,0),4,8,0);
-//
-//        std::cout << full_v2_image.cols << "\n";
-//        std::cout << full_v2_image.rows << "\n";
-//        std::cout << "***************************************" << std::endl;
-//
-//        std::cout << "\nCheck `result.png`, `result_mask.png` and `result2.png`!\n";
-//        imwrite("/home/baihao/jpg/resultxuboabab.jpg", full_v2_image);
+        std::cout << "***************************************" << std::endl;
+        Point root_points[1][4];
+        root_points[0][0] = p0_;
+        root_points[0][1] = p1_;
+        root_points[0][2] = p2_;
+        root_points[0][3] = p3_;
+
+        std::cout << p0_ << "\n";
+        std::cout << p1_ << "\n";
+        std::cout << p2_ << "\n";
+        std::cout << p3_ << "\n";
+
+
+        std::cout << p0 << "\n";
+        std::cout << p1 << "\n";
+        std::cout << p2 << "\n";
+        std::cout << p3 << "\n";
+
+        const Point* ppt[1] = {root_points[0]};
+        int npt[] = {4};
+
+
+        polylines(full_v2_image,  ppt, npt, 1, 1, Scalar(0,255,0),4,8,0);
+
+        std::cout << full_v2_image.cols << "\n";
+        std::cout << full_v2_image.rows << "\n";
+        std::cout << "***************************************" << std::endl;
+
+        std::cout << "\nCheck `result.png`, `result_mask.png` and `result2.png`!\n";
+        imwrite("/home/baihao/jpg/resultxuboabab.jpg", full_v2_image);
 
         result.corner = vector<Point2f>({p0_, p1_,
                                          p2_, p3_});
@@ -686,137 +574,13 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         return 1;
     }
 
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-    //! ending here
-
-
-
     return 1;
-    //! need remove
-    featuredata checkdata;
-//        FlannBasedMatcher matcher;
-    vector<vector<DMatch>> matchePoints12;
-    vector<DMatch> goodmatchpoints;
-    if (basedata.descriptors.rows < 1 || checkdata.descriptors.rows < 1) {
-        return 0;
-    }
-//        matcher.knnMatch(basedata.descriptors, checkdata.descriptors, matchePoints12, 2);
-    for (size_t i = 0; i < matchePoints12.size(); i++) {
-        if (matchePoints12[i][0].distance < 0.75 * matchePoints12[i][1].distance) {
-            goodmatchpoints.push_back(matchePoints12[i][0]);
-        }
-    }
 
-    homoandmask hmdata;
-    gethomoandmask_v3(hmdata, basedata.keypoints, checkdata.keypoints, goodmatchpoints, direction, image.rows,
-                      image.cols, cutsize, match_num1);//计算单应性矩阵
-//        cv::detail::AffineWarper::getRTfromHomogeneous()
-
-
-    vector<DMatch> lastmatchpoints;
-    for (size_t i = 0; i < hmdata.mask.size(); i++) {
-        if (hmdata.mask[i] != (uchar) 0) {
-            lastmatchpoints.push_back(goodmatchpoints[i]);
-        }
-    }
-    float good_point_percentage = (float)lastmatchpoints.size() / (float)hmdata.mask.size();
-    cout <<" lastmatchpoints.size()" << lastmatchpoints.size()  <<" points  \n";
-    cout <<"hmdata.mask.size()" << hmdata.mask.size()  <<" points  \n";
-    cout <<" there are " << good_point_percentage <<" points  \n";
-    if (lastmatchpoints.size() < match_num1 ||good_point_percentage  < 0.5) {
-        return 0;
-    }
-
-    Corner c;
-    calculatecorners(c, basedata.image, hmdata.homo);
-    vector<Point2f> pointss ;
-
-    pointss.push_back(Point(0,0));
-    pointss.push_back(Point(0,1920));
-    pointss.push_back(Point(1080,1920));
-    pointss.push_back(Point(1080,0));
-
-    Mat output;
-
-//        perspectiveTransform(Mat(pointss), output, invert_camera0_R * ori_camera1_R);
-
-//        cout<< "the points is : "<< output <<"  . ";
-
-    result.homo = hmdata.homo;
-
-    result.corner = vector<Point2f>({Point2f(int(output.at<float>(0,0)), int(output.at<float>(0,1))), Point2f(int(output.at<float>(1,0)), int(output.at<float>(1,1))),
-                                     Point2f(int(output.at<float>(2,0)), int(output.at<float>(2,1))), Point2f(int(output.at<float>(3,0)), int(output.at<float>(3,1)))});
-
-//        result.corner = vector<Point2f>({Point2f(c.ltop.x, c.ltop.y), Point2f(c.lbottom.x, c.lbottom.y),
-//                                         Point2f(c.rbottom.x, c.rbottom.y), Point2f(c.rtop.x, c.rtop.y)});
-
-    if (lastmatchpoints.size() >= match_num1 && lastmatchpoints.size() < match_num2) {
-        result.direction_status = 1;
-        return 0;
-    }
-
-    if (lastmatchpoints.size() >= match_num2) {
-        result.direction_status = 2;
-
-        if (abs(result.corner[0].x - result.corner[2].x) > threshold1 * image.cols ||
-            abs(result.corner[0].y - result.corner[2].y) > threshold1 * image.rows ||
-            abs(result.corner[1].x - result.corner[3].x) > threshold1 * image.cols ||
-            abs(result.corner[1].y - result.corner[3].y) > threshold1* image.rows) {
-            result.direction_status = 1;
-        }
-
-
-        switch (direction) {
-            case 0:
-                if (abs(result.corner[2].y - float(image.rows)) + abs(result.corner[3].y) > threshold2 * image.rows ||
-                    abs(result.corner[3].x) > float(image.cols) ||
-                    abs(result.corner[2].x) > float(image.cols)) {
-                    result.direction_status = -2;
-                }
-                break;
-            case 1:
-                if (abs(result.corner[1].y - float(image.rows)) + abs(result.corner[0].y) > threshold2 * image.rows ||
-                    result.corner[0].x < 0 ||
-                    result.corner[1].x < 0) {
-                    result.direction_status = -2;
-                }
-                break;
-            case 2:
-                if (abs(result.corner[1].x) + abs(result.corner[2].x - float(image.cols)) > threshold2 * image.cols ||
-                    abs(result.corner[1].y) > float(image.rows) ||
-                    abs(result.corner[2].y) > float(image.rows)) {
-                    result.direction_status = -2;
-                }
-                break;
-            case 3:
-                if (abs(result.corner[0].x) + abs(result.corner[3].x - float(image.cols)) > threshold2 * image.cols ||
-                    result.corner[0].y < 0 ||
-                    result.corner[3].y < 0) {
-                    result.direction_status = -2;
-                }
-                break;
-            default:
-                break;
-        }
-
-        return 0;
-    }
 
 
 }
 
+//! detecte feature and descrptor using Imagefeature detetor the algorithm logical is not change
 int getfeaturedata(featuredata &result, Mat &image, int direction, double cutsize, double compression_ratio)
 {
     Mat *image_ = new Mat();
@@ -906,7 +670,7 @@ int getfeaturedata(featuredata &result, Mat &image, int direction, double cutsiz
     }
 }
 
-
+//! original feature and descrpitor calculator
 int get_keypoints_and_descriptors(featuredata &result, Mat &image)
 {
     try {
@@ -959,7 +723,7 @@ int get_keypoints_and_descriptors(featuredata &result, Mat &image)
     catch (...) { return 0; }
 }
 
-
+//! original homography matrix calculator
 int checkimage(imagestatus &result, featuredata& basedata, Mat& image, int direction, double cutsize, double compression_ratio)
 {
     Mat *image_ = new Mat();
