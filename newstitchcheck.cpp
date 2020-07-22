@@ -13,7 +13,7 @@ double work_scale = 1, seam_scale = 1, compose_scale = 1;
 bool is_work_scale_set = false, is_seam_scale_set = false, is_compose_scale_set = false;
 float seam_work_aspect = 1.0f;
 #ifdef __IPHONE_OS_VERSION_MAX_ALLOWED //使用一个iOS肯定有的宏定义 来判断是否是iOS 或者 安卓
-Ptr<cv::xfeatures2d::SiftFeatureDetector> finder = cv::xfeatures2d::SiftFeatureDetector::create(1000);
+Ptr<cv::xfeatures2d::SiftFeatureDetector> finder = cv::xfeatures2d::SiftFeatureDetector::create(500);
 #define WIDTH_MAX 800
 #else
 
