@@ -18,8 +18,9 @@ Ptr<cv::xfeatures2d::SiftFeatureDetector> finder = cv::xfeatures2d::SiftFeatureD
 #else
 
 //! feature keypoint descrpetor finder
-Ptr<Feature2D> finder = xfeatures2d::SURF::create(4000);
-#define WIDTH_MAX 800
+Ptr<Feature2D> finder = xfeatures2d::SURF::create(2000, 4,3, false, false);
+
+#define WIDTH_MAX 600
 #endif
 // Ptr<Feature2D>  finder = ORB::create();
 class MyPoint
@@ -265,11 +266,16 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
     try{
         //! init the status, 0 is can not stitching
         result.direction_status = 0;
-    //    work_scale = float(image.rows)/float(800);
+        //    work_scale = float(image.rows)/float(800);
         //! 手机屏幕分辨率是1920*1080
         Size target_size;
         target_size.height = 1920;
         target_size.width = 1080;
+
+        if (image.channels() == 3) {
+            cvtColor(image, image, COLOR_RGB2GRAY);
+        }
+
         resize(image, image, target_size);
         cv::Size full_img_size;
 
@@ -281,24 +287,24 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         full_img_sizes[1] = full_img_size;
 
         //! cut image based one the cut percent
-        int cols = 1080;
-        int rows = 1920;
-        switch (direction) {
-            case 0:
-                cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
-                break;
-            case 1:
-                cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
-                break;
-            case 2:
-                cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
-                break;
-            case 3:
-                cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
-                break;
-            default:
-                break;
-        }
+//        int cols = 1080;
+//        int rows = 1920;
+//        switch (direction) {
+//            case 0:
+//                cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
+//                break;
+//            case 1:
+//                cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
+//                break;
+//            case 2:
+//                cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
+//                break;
+//            case 3:
+//                cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
+//                break;
+//            default:
+//                break;
+//        }
 
 
 
@@ -317,38 +323,39 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
 
         //! cause we calculate the keypoints based on the cut image
         //! so we need to map the keypoint to whole image
-        for(int i = 0; i < image2Feature.keypoints.size();i++){
-
-            //! 0 cut right
-            //! 1 cut left, so we need change the cooridinate add the cut size to the x
-            //! 2 cut below
-            //! 3 cut up, so need to add the cut size to the y
-            switch (direction) {
-                case 0:
-                    break;
-                case 1:
-                    image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x + ((int)(cols * (1 - cutsize)))*work_scale,image2Feature.keypoints[i].pt.y);
-                    break;
-                case 2:
-                    break;
-                case 3:
-                    image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x,(image2Feature.keypoints[i].pt.y)+((int)(rows * (1 - cutsize)))*work_scale);
-                    break;
-                default:
-                    break;
-            }
-        }
+//        for(int i = 0; i < image2Feature.keypoints.size();i++){
+//
+//            //! 0 cut right
+//            //! 1 cut left, so we need change the cooridinate add the cut size to the x
+//            //! 2 cut below
+//            //! 3 cut up, so need to add the cut size to the y
+//            switch (direction) {
+//                case 0:
+//                    break;
+//                case 1:
+//                    image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x + ((int)(cols * (1 - cutsize)))*work_scale,image2Feature.keypoints[i].pt.y);
+//                    break;
+//                case 2:
+//                    break;
+//                case 3:
+//                    image2Feature.keypoints[i].pt = Point2f(image2Feature.keypoints[i].pt.x,(image2Feature.keypoints[i].pt.y)+((int)(rows * (1 - cutsize)))*work_scale);
+//                    break;
+//                default:
+//                    break;
+//            }
+//        }
         //! create a feature vector to store the keypoints and features
         vector<cv::detail::ImageFeatures> features;
         features.push_back(basedata.imageFeatures);
         features.push_back(image2Feature);
-        // (3) 创建图像特征匹配器，计算匹配信息
 
+        //! match creator match image features
         vector<cv::detail::MatchesInfo> pairwise_matches;
         Ptr<cv::detail::FeaturesMatcher>  matcher = makePtr<cv::detail::BestOf2NearestMatcher>(false, match_conf);
         (*matcher)(features, pairwise_matches);
         matcher->collectGarbage();
 
+        //! resize
         vector<Mat> images(2);
         resize(basedata.image, images[0], Size(), seam_scale, seam_scale, 5);
         resize(image, images[1], Size(), seam_scale, seam_scale, 5);
@@ -356,7 +363,16 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         // Leave only images we are sure are from the same panorama
         vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
         vector<Mat> img_subset;
-    //    vector<String> img_names_subset;
+        cout<< "num of inliers is : "<<pairwise_matches[1].num_inliers<<"\n";
+
+//        if(pairwise_matches[1].num_inliers < 10){
+//
+//        }
+//
+//        //! 匹配点的数量小于50
+//        if(pairwise_matches[1].num_inliers < 50){
+//            result.direction_status = 1;
+//        }
         vector<Size> full_img_sizes_subset;
         for (size_t i = 0; i < indices.size(); ++i)
         {
@@ -374,7 +390,9 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         int num_images = static_cast<int>(img_subset.size());
         if (num_images < 2)
         {
+            result.direction_status = 0;
             std::cout << "Need more images\n";
+            result.direction_status = result.direction_status +  pairwise_matches[1].num_inliers*10;
             return -1;
         }
 
@@ -384,8 +402,10 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         if (!(*estimator)(features, pairwise_matches, cameras))
         {
             cout << "Homography estimation failed.\n";
+            result.direction_status = result.direction_status +  pairwise_matches[1].num_inliers*10;
             return 0;
         }
+
 
         for (size_t i = 0; i < cameras.size(); ++i)
         {
@@ -411,7 +431,9 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         adjuster->setRefinementMask(refine_mask);
         if (!(*adjuster)(features, pairwise_matches, cameras))
         {
+
             cout << "Camera parameters adjusting failed.\n";
+            result.direction_status = result.direction_status +  pairwise_matches[1].num_inliers*10;
             return -1;
         }
         cout<< "<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n";
@@ -450,6 +472,7 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         if (!warper_creator)
         {
             cout << "Can't create the warper \n";
+            result.direction_status = result.direction_status +  pairwise_matches[1].num_inliers*10;
             return 1;
         }
 
@@ -530,43 +553,50 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         cv::Point p3_ = calcWarpedPoint(p3, K0, R0, K1, R1, warper);
 
 
+        bool write_image = false;
+        if (write_image){
+            std::cout << "***************************************" << std::endl;
+            Point root_points[1][4];
+            root_points[0][0] = p0_;
+            root_points[0][1] = p1_;
+            root_points[0][2] = p2_;
+            root_points[0][3] = p3_;
 
-        std::cout << "***************************************" << std::endl;
-        Point root_points[1][4];
-        root_points[0][0] = p0_;
-        root_points[0][1] = p1_;
-        root_points[0][2] = p2_;
-        root_points[0][3] = p3_;
-
-        std::cout << p0_ << "\n";
-        std::cout << p1_ << "\n";
-        std::cout << p2_ << "\n";
-        std::cout << p3_ << "\n";
-
-
-        std::cout << p0 << "\n";
-        std::cout << p1 << "\n";
-        std::cout << p2 << "\n";
-        std::cout << p3 << "\n";
-
-        const Point* ppt[1] = {root_points[0]};
-        int npt[] = {4};
+            std::cout << p0_ << "\n";
+            std::cout << p1_ << "\n";
+            std::cout << p2_ << "\n";
+            std::cout << p3_ << "\n";
 
 
-        polylines(full_v2_image,  ppt, npt, 1, 1, Scalar(0,255,0),4,8,0);
+            std::cout << p0 << "\n";
+            std::cout << p1 << "\n";
+            std::cout << p2 << "\n";
+            std::cout << p3 << "\n";
 
-        std::cout << full_v2_image.cols << "\n";
-        std::cout << full_v2_image.rows << "\n";
-        std::cout << "***************************************" << std::endl;
+            const Point* ppt[1] = {root_points[0]};
+            int npt[] = {4};
 
-        std::cout << "\nCheck `result.png`, `result_mask.png` and `result2.png`!\n";
-        imwrite("/home/baihao/jpg/resultxuboabab.jpg", full_v2_image);
+
+            polylines(full_v2_image,  ppt, npt, 1, 1, Scalar(0,255,0),4,8,0);
+
+            std::cout << full_v2_image.cols << "\n";
+            std::cout << full_v2_image.rows << "\n";
+            std::cout << "***************************************" << std::endl;
+
+            std::cout << "\nCheck `result.png`, `result_mask.png` and `result2.png`!\n";
+            imwrite("/home/baihao/jpg/resultxuboabab.jpg", full_v2_image);
+        }
+
 
         result.corner = vector<Point2f>({p0_, p1_,
                                          p2_, p3_});
 
         result.direction_status = 2;
-
+//        if(pairwise_matches[1].num_inliers < 50){
+//            result.direction_status = 1 + pairwise_matches[1].num_inliers*10;
+//        }else{
+//            result.direction_status = 2 + pairwise_matches[1].num_inliers*10;
+//        }
         result.homo = refine_mask;
         return 0;
     } catch (...) {
@@ -596,26 +626,29 @@ int getfeaturedata(featuredata &result, Mat &image, int direction, double cutsiz
         target_size.height = 1920;
         target_size.width = 1080;
 //        work_scale = float(800)/float(image.rows);
+        if (image.channels() == 3) {
+            cvtColor(image, image, COLOR_RGB2GRAY);
+        }
         resize(image, image, target_size);
 
         int cols = 1080;
         int rows = 1920;
-        switch (direction) {
-            case 0:
-                cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
-                break;
-            case 1:
-                cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
-                break;
-            case 2:
-                cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
-                break;
-            case 3:
-                cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
-                break;
-            default:
-                break;
-        }
+//        switch (direction) {
+//            case 0:
+//                cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
+//                break;
+//            case 1:
+//                cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
+//                break;
+//            case 2:
+//                cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
+//                break;
+//            case 3:
+//                cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
+//                break;
+//            default:
+//                break;
+//        }
 //        imwrite("/home/baihao/jpg/check.jpg",image);
 
 //        work_scale = min(1.0, sqrt(work_megapix * 1e6 / image.size().area()));
@@ -628,29 +661,29 @@ int getfeaturedata(featuredata &result, Mat &image, int direction, double cutsiz
         seam_scale = 1.0;
         seam_work_aspect = seam_scale / work_scale;
         cv::detail::computeImageFeatures(finder, result.image, result.imageFeatures);
-        for(int i = 0; i < result.imageFeatures.keypoints.size();i++){
-
-
-            switch (direction) {
-                case 0:
-//                    cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
-//                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x,result.imageFeatures.keypoints[i].pt.y);
-                    break;
-                case 1:
-//                    cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
-                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x + ((int)(cols * (1 - cutsize)))*work_scale,result.imageFeatures.keypoints[i].pt.y);
-                    break;
-                case 2:
-//                    cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
-                    break;
-                case 3:
-//                    cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
-                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x,(result.imageFeatures.keypoints[i].pt.y)+((rows * (1 - cutsize)))*work_scale);
-                    break;
-                default:
-                    break;
-            }
-        }
+//        for(int i = 0; i < result.imageFeatures.keypoints.size();i++){
+//
+//
+//            switch (direction) {
+//                case 0:
+////                    cutimage(image, image, 0, 0, (int)(cols * cutsize), rows);
+////                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x,result.imageFeatures.keypoints[i].pt.y);
+//                    break;
+//                case 1:
+////                    cutimage(image, image, (int)(cols * (1 - cutsize)), 0, cols, rows);
+//                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x + ((int)(cols * (1 - cutsize)))*work_scale,result.imageFeatures.keypoints[i].pt.y);
+//                    break;
+//                case 2:
+////                    cutimage(image, image, 0, 0, cols, (int)(rows * cutsize));
+//                    break;
+//                case 3:
+////                    cutimage(image, image, 0, (int)(rows * (1 - cutsize)), cols, rows);
+//                    result.imageFeatures.keypoints[i].pt = Point2f(result.imageFeatures.keypoints[i].pt.x,(result.imageFeatures.keypoints[i].pt.y)+((rows * (1 - cutsize)))*work_scale);
+//                    break;
+//                default:
+//                    break;
+//            }
+//        }
 //        resize(result.image, result.image, Size(), seam_scale, seam_scale, 5);
 //
 //        resize(image,image,target_size);
@@ -1241,3 +1274,38 @@ void triangulation(Mat R, Mat t){
 
 
 }
+
+stitch_status *previous_status;
+
+int check_image_for_IOS(stitch_status &result, featuredata& basedata, Mat& image, int direction, double cutsize, double compression_ratio, int match_num1, int match_num2, double threshold1, double threshold2, int rows, int cols) {
+    stitch_status *current_result = new stitch_status();
+    check_image_v2(*current_result,basedata,image,direction,cutsize,compression_ratio,match_num1,match_num2,threshold1,threshold2);
+
+    if (current_result->direction_status != 2){
+        if (previous_status->direction_status ==2){
+            for (int i =0 ;i<  previous_status->corner.size(); i++ ){
+                current_result->corner[i] = previous_status->corner[i];
+            }
+
+        }
+    }
+    previous_status->direction_status = current_result->direction_status;
+    result.corner = current_result->corner;
+    result.direction_status=current_result->direction_status;
+
+    float x_scale = float(1080.0)/float(cols);
+    float y_scale = float(1920.0)/float(rows);
+    for (int i =0 ;i<  current_result->corner.size(); i++ ){
+        previous_status->corner[i] = current_result->corner[i];
+
+
+        result.corner[i].x =result.corner[i].x*x_scale;
+        result.corner[i].y =result.corner[i].y*y_scale;
+
+    }
+
+
+
+}
+
+

@@ -281,7 +281,7 @@ struct MyProjector
 };
 
 
-
+int check_image_for_IOS(stitch_status &result, featuredata& basedata, Mat& image, int direction, double cutsize, double compression_ratio, int match_num1, int match_num2, double threshold1, double threshold2, int rows, int cols);
 
 
 #endif
