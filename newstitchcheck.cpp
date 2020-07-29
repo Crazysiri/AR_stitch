@@ -311,16 +311,19 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         Mat full_v2_image = image.clone();
 
         //! resize percent
-        work_scale = min(1.0, sqrt(work_megapix * 1e6 / image.size().area()));
+//        work_scale = min(1.0, sqrt(work_megapix * 1e6 / image.size().area()));
         work_scale = float(WIDTH_MAX)/float(image.rows);
-        resize(image, image, Size(), work_scale, work_scale, 5);
+        resize(image, image, Size(), work_scale, work_scale, INTER_LINEAR);
 
         //! an empty keypoint and decriptor calculator
         cv::detail::ImageFeatures image2Feature;
         seam_scale = 1.0;
         seam_work_aspect = seam_scale / work_scale;
+        clock_t start, finish;
+        start = clock();
         cv::detail::computeImageFeatures(finder, image, image2Feature);
-
+        finish = clock();
+        cout << "The cal time cost: " << (double)(finish - start) / CLOCKS_PER_SEC << endl;
         //! cause we calculate the keypoints based on the cut image
         //! so we need to map the keypoint to whole image
 //        for(int i = 0; i < image2Feature.keypoints.size();i++){
@@ -356,13 +359,13 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         matcher->collectGarbage();
 
         //! resize
-        vector<Mat> images(2);
-        resize(basedata.image, images[0], Size(), seam_scale, seam_scale, 5);
-        resize(image, images[1], Size(), seam_scale, seam_scale, 5);
+//        vector<Mat> images(2);
+//        resize(basedata.image, images[0], Size(), seam_scale, seam_scale, 5);
+//        resize(image, images[1], Size(), seam_scale, seam_scale, 5);
         //! (4) 剔除外点，保留最确信的大成分
         // Leave only images we are sure are from the same panorama
         vector<int> indices = leaveBiggestComponent(features, pairwise_matches, conf_thresh);
-        vector<Mat> img_subset;
+//        vector<Mat> img_subset;
         cout<< "num of inliers is : "<<pairwise_matches[1].num_inliers<<"\n";
 
 //        if(pairwise_matches[1].num_inliers < 10){
@@ -377,17 +380,17 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         for (size_t i = 0; i < indices.size(); ++i)
         {
 
-            img_subset.push_back(images[indices[i]]);
+//            img_subset.push_back(images[indices[i]]);
             full_img_sizes_subset.push_back(full_img_sizes[indices[i]]);
         }
-        if(img_subset.size() < 2){
+        if(full_img_sizes_subset.size() < 2){
             return 0;
         }
-        images = img_subset;
+//        images = img_subset;
         full_img_sizes = full_img_sizes_subset;
 
         // Check if we still have enough images
-        int num_images = static_cast<int>(img_subset.size());
+        int num_images = static_cast<int>(full_img_sizes_subset.size());
         if (num_images < 2)
         {
             result.direction_status = 0;
@@ -395,6 +398,9 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
             result.direction_status = result.direction_status +  pairwise_matches[1].num_inliers*10;
             return -1;
         }
+
+
+
 
         //!(5) 估计 homography
         Ptr<cv::detail::Estimator> estimator = makePtr<cv::detail::HomographyBasedEstimator>();
@@ -466,6 +472,8 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         vector<UMat> images_warped(num_images);
         vector<Size> sizes(num_images);
 
+
+
         //! Warp images and their masks
 //        Ptr<WarperCreator> warper_creator = makePtr<cv::CylindricalWarper>();
         Ptr<WarperCreator> warper_creator = makePtr<cv::PlaneWarper>();
@@ -480,8 +488,9 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         Ptr<cv::detail::RotationWarper> warper = warper_creator->create(static_cast<float>(warped_image_scale * seam_work_aspect));
 
 
-        images.clear();
+//        images.clear();
         images_warped.clear();
+
 
 
         Mat img_warped, img_warped_s;
@@ -544,7 +553,6 @@ int check_image_v2(stitch_status &result, featuredata& basedata, Mat& image, int
         cv::Point2f p1 = cv::Point2f(1080,0);
         cv::Point2f p2 = cv::Point2f(1080,1920);
         cv::Point2f p3 = cv::Point2f(0,1920);
-
 
 
         cv::Point p0_ = calcWarpedPoint(p0, K0, R0, K1, R1, warper);

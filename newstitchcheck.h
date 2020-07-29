@@ -15,6 +15,7 @@
 #include "opencv2/stitching/detail/motion_estimators.hpp"
 #include "opencv2/calib3d.hpp"
 #include "opencv2/stitching/warpers.hpp"
+#include<time.h>
 using namespace cv;
 using namespace std;
 
